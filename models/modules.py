@@ -236,7 +236,7 @@ class ResDeconv(nn.Module):
         model += [self._make_layer(block, 32, 2)] # 224
         model += [nn.Upsample(scale_factor=2)]
         model += [self._make_layer(block, 16, 2)] # 224
-        model += [nn.Conv2d(16, 3, stride=1, kernel_size=1)]
+        model += [nn.Conv2d(16, 6, stride=1, kernel_size=1)]    #! CrossEncoder(6ch-out)
 
         self.deconv = nn.Sequential(*model)
 

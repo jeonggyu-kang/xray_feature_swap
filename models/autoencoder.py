@@ -15,14 +15,14 @@ def _get_eleme_num(model, x):
     return (C,H,W)
 
 
-class CXRAutoencoder2(nn.Module):
+class CXRCrossEncoder(nn.Module):
     def __init__(self, 
-        z_common = 24, 
-        z_age = 12,
-        z_sex = 12,
+        z_dict,
+        swap_list,
+        pred_dict,
         input_shape=(2, 3, 448, 448), 
     ):
-        super(CXRAutoencoder2, self).__init__()
+        super(CXRCrossEncoder, self).__init__()
 
         _, _, org_height, org_width = input_shape
         bottle_neck_height = org_height // 32
@@ -36,68 +36,100 @@ class CXRAutoencoder2(nn.Module):
         self.encoder = modules.resnet18(pretrained = True)
         bottleneck_shape = _get_eleme_num(self.encoder, torch.randn(input_shape))
 
-        self.z_sex = z_sex
-        self.z_age = z_age
-        self.z_common = z_common
-        z_dim = z_sex + z_age + z_common
-
-        
+        # calculate z-dim
+        self.z_dim = 0
+        for k, v in z_dict.items():
+            self.z_dim += v 
+        self.z_dict =z_dict
+        self.swap_list = swap_list
+        self.pred_dict = pred_dict
+              
         # encoder fc    
-        self.encoder_fc = nn.Linear(bottleneck_shape[0], z_dim)
+        self.encoder_fc = {}
+        for k, v in z_dict.items():
+            self.encoder_fc[k] = nn.Linear(bottleneck_shape[0], v)
+            self.encoder_fc[k].cuda()
+        
+        # prediction networks
+        self.prediction_net = {}
+        for k, v in pred_dict.items():
+            self.prediction_net[k] = nn.Sequential(
+                nn.Linear(z_dict[k], 256),
+                nn.ReLU(True),
+                nn.Dropout(0.5),
+                nn.Linear(256, v)
+            )     
+            self.prediction_net[k].cuda()   
+
 
         # decoder 
         self.decoder = modules.ResDeconv(
             block=modules.BasicBlock,
             global_avg_pool = True,
-            z_all = z_dim,
+            z_all = self.z_dim,
             bottleneck_shape = (2048, bottle_neck_height, bottle_neck_width)
         )
-        
-        self.sex_classifier = nn.Sequential(
-            nn.Linear(self.z_sex, 256),
-            nn.ReLU(True),
-            nn.Dropout(0.5),
-            nn.Linear(256, 2)
-        )
 
-        self.age_regresser = nn.Sequential(
-            nn.Linear(self.z_age, 256),
-            nn.ReLU(True),
-            nn.Dropout(0.5),
-            nn.Linear(256, 1)
-        )       
-
-    
-
-    
+   
     def forward(self, x): # x: x-ray
-        latent_code = self.encoder(x)
-        latent_code = latent_code.mean(-1).mean(-1) # (2048 X H x W) -> (2048)
-        latent_code = self.encoder_fc(latent_code)
+        features = self.encoder(x)
+        features = features.mean(-1).mean(-1) # (2048 X H x W) -> (2048)
 
-        x_hat = self.decoder(latent_code)
+        # feature to latent code
+        latent_code = {}
+        _latent_code_gather = []
+        for k, v in self.z_dict.items():
+            latent_code[k] = self.encoder_fc[k](features)
+            _latent_code_gather.append(latent_code[k])
 
-        y1_hat = self.age_regresser(latent_code[:, :self.z_age]) # latent_code N x 64
-        y2_hat = self.sex_classifier(latent_code[:, self.z_age:self.z_sex + self.z_age]) # latent_code N x 64
+
+        # make predictions
+        pred = {}
+        for k, v in self.pred_dict.items():
+            pred[k] = self.prediction_net[k](latent_code[k])
+
+        # feature swap
+
+        for swap_feat_name in self.swap_list:
+            
 
 
 
+
+
+
+        # reconstruction
+        all_latent_code = torch.cat(_latent_code_gather, dim = 1)
+        x_hat = self.decoder(all_latent_code)
+
+        
         output_dict = {
-            'x_hat' : x_hat, # reconstructed image
-            'y1_hat' : y1_hat, # age
-            'y2_hat' : y2_hat, # sex
-            'latent_code' : latent_code
+            'latent_code_dict' : latent_code,
+            'pred_dict' : pred,
+            'x_hat' : x_hat
         }
 
 
         return output_dict
 
 if __name__ == '__main__':
+    z_dict = {
+        'common' : 20,
+        'age' : 8,
+        'sex' : 6,
+        'cac' : 12
+    }
+    swap_list = ['common', 'sex', 'cac']
+    pred_dict = {
+        'age' : 1,
+        'sex' : 2,
+        'cac' : 1,
+    }
     
-    model2 = CXRAutoencoder2(z_age = 24, z_sex = 24, z_common = 128, input_shape=(2,3,448*2, 448*2)).cuda()
+    model2 = CXRCrossEncoder(z_dict, swap_list, pred_dict,input_shape=(2,3,448, 448)).cuda()
 
     batch_size = 4
-    image = torch.rand(batch_size, 3, 448*2, 448*2).cuda()
+    image = torch.rand(batch_size, 3, 448, 448).cuda()
 
 
     output_dict2 = model2(image) # w/ bottleneck-linear
@@ -105,4 +137,8 @@ if __name__ == '__main__':
 
 
     for k, v in output_dict2.items():
-        print(k, v.shape)
+        if isinstance(v, dict):
+            for k2, v2 in v.items():
+                print(k, k2, v2.shape)
+        else:
+            print(k, v.shape)
