@@ -1,43 +1,38 @@
 import os
 import pandas as pd
 import random
+import pickle
 
 source_file = "./cac_sample.csv"
 dest_dir = "./data"
 train_ratio = 70
 
-if not os.path.exists(dest_dir):
-    os.makedirs(dest_dir)
+# destination parquet
+dest_train_parquet = 'train_dataset.parquet'
+dest_test_parquet = 'test_dataset.parquet'
+dest_pickle = 'title.pkl'
 
-# csv first row
-TITLE_ROW = ['dcm_path', 'age', 'sex', 'cac', 'dcm_path2', 'age2', 'sex2', 'cac2']
+os.makedirs(dest_dir,exist_ok=True)
 
 df = pd.read_csv(source_file)
 
-df = df.loc[:, TITLE_ROW ]
+# dump title info.
+title_list = list(df.columns) # file_name age ...
+with open(os.path.join(dest_dir, dest_pickle), 'wb') as f:
+    pickle.dump(title_list , f)
 
+df = df.loc[: , title_list]
 df.dropna(inplace = True)
 
-training = []
-
-for i in range (len(df)):
-    num = random.randint(1,1000001)
-    training.append(num)
-   
-    
-df['training'] = training
-
-df.sort_values(by=['training'], axis=0)
+# shuffle samples
+df = df.sample(frac=1).reset_index(drop=True)
 
 row_cut = int(len(df)*train_ratio/100)
-
-# df.reset_index()
-
-df = df.loc[:, TITLE_ROW]
-
 df_training = df.iloc[:row_cut,:]
 df_test     = df.iloc[row_cut:,:]
 
 
-df_training.to_parquet(dest_dir+'/train_dataset.parquet')
-df_test.to_parquet(dest_dir+'/test_dataset.parquet')
+df_training.to_parquet(os.path.join(dest_dir, dest_train_parquet))
+df_test.to_parquet(os.path.join(dest_dir, dest_test_parquet))
+
+print ('Parquet & pickle files have written in {}!'.format(dest_dir))

@@ -70,11 +70,12 @@ test_pipeline = [
 
 # dataset-related params
 data_dict = dict(
-    dataset = 'FeatureSwapDataset',
+    dataset = 'VariableAgeDataset',
     save_root = './work_dir',
     batch_size = 16,
     workers_per_gpu = 1,
 
+    pickle_path = '/mnt/xray_feature_swap/data/title.pkl',
     train = dict(
         img_dir = '/mnt/project_classifiers/data',
         ann_file = '/mnt/xray_feature_swap/data/train_dataset.parquet',

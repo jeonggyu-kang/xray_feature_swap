@@ -43,7 +43,8 @@ def main():
         batch_size = args['batch_size'],
         num_workers = args['workers_per_gpu'],
         pipeline = args[mode]['pipeline'],
-        csv = False
+        csv = False,
+        pickle_path = args['pickle_path']
     )
 
     
@@ -56,15 +57,12 @@ def main():
         batch_size = args['batch_size'],
         num_workers = args['workers_per_gpu'],
         pipeline = args[mode]['pipeline'],
-        csv = False
+        csv = False,
+        pickle_path = args['pickle_path']
     )
 
-    for i , batch in enumerate(train_loader):
-        image = batch['image']
-        y1 = batch['gt_age']
-        print(image.shape)
-        print(y1)
-
+    for i , sample in enumerate(train_loader):
+        print(sample['image'].shape)
         break
 
     
