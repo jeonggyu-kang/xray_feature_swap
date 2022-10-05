@@ -20,6 +20,7 @@ class CXRCrossEncoder(nn.Module):
         z_dict,
         swap_list,
         pred_dict,
+        latent_code_order, # ['...']
         input_shape=(2, 3, 448, 448), 
     ):
         super(CXRCrossEncoder, self).__init__()
@@ -33,7 +34,9 @@ class CXRCrossEncoder(nn.Module):
         assert org_height >= 224 and org_width >= 224
 
         # encoder 
-        self.encoder = modules.resnet18(pretrained = True)
+        self.encoder = modules.resnet18(pretrained = False)
+        # modify input chnnel (first conv)
+        self.encoder.conv1 = nn.Conv2d(6,64, kernel_size=(7,7), stride=(2,2), padding=(3,3), bias = False)
         bottleneck_shape = _get_eleme_num(self.encoder, torch.randn(input_shape))
 
         # calculate z-dim
@@ -43,6 +46,8 @@ class CXRCrossEncoder(nn.Module):
         self.z_dict =z_dict
         self.swap_list = swap_list
         self.pred_dict = pred_dict
+        self.latent_code_order = latent_code_order
+        assert len(self.latent_code_order) == len(self.z_dict.keys())
               
         # encoder fc    
         self.encoder_fc = {}
@@ -70,6 +75,32 @@ class CXRCrossEncoder(nn.Module):
             bottleneck_shape = (2048, bottle_neck_height, bottle_neck_width)
         )
 
+    def _concat_latent_code(self, latent_dict):
+        ret = []
+        for code_name in self.latent_code_order:
+            ret.append(latent_dict[code_name])
+
+        ret = torch.cat(ret, dim=1)    # 128 x 20, 128 x 8, 128 x 4 = 128 x 32
+        return ret
+
+    def _swap_latent_code(self, latent_code, z_size):
+        ''' docstring
+        args: 
+            latent_code (torch.Tensor) : before swap
+            z_size (int) : dimension of the input latent code
+        return:
+            latent_code (torch.Tensor) : after swap
+
+        e.g.
+            (before) torch.Tensor([1,2,3,4, 5,6,7,8])
+            (after)  torch.Tensor([5,6,7,8, 1,2,3,4])
+
+        '''
+        swap_order = [x for x in range(z_size//2, z_size)] # (8) 4 5 6 7
+        swap_order += [x for x in range(z_size//2)]
+        latent_code = latent_code[:, swap_order]
+        return latent_code
+
    
     def forward(self, x): # x: x-ray
         features = self.encoder(x)
@@ -77,11 +108,8 @@ class CXRCrossEncoder(nn.Module):
 
         # feature to latent code
         latent_code = {}
-        _latent_code_gather = []
         for k, v in self.z_dict.items():
             latent_code[k] = self.encoder_fc[k](features)
-            _latent_code_gather.append(latent_code[k])
-
 
         # make predictions
         pred = {}
@@ -89,24 +117,20 @@ class CXRCrossEncoder(nn.Module):
             pred[k] = self.prediction_net[k](latent_code[k])
 
         # feature swap
-
         for swap_feat_name in self.swap_list:
+            latent_code[swap_feat_name] = self._swap_latent_code(
+                latent_code[swap_feat_name], self.z_dict[swap_feat_name]
+            )
             
-
-
-
-
-
-
         # reconstruction
-        all_latent_code = torch.cat(_latent_code_gather, dim = 1)
-        x_hat = self.decoder(all_latent_code)
+        z_all = self._concat_latent_code(latent_code)
+        x_hat = self.decoder(z_all)
 
         
         output_dict = {
-            'latent_code_dict' : latent_code,
+            'latent_code_dict' : latent_code,    # after swap
             'pred_dict' : pred,
-            'x_hat' : x_hat
+            'x_hat' : x_hat                      # reconstructed image
         }
 
 
@@ -126,10 +150,11 @@ if __name__ == '__main__':
         'cac' : 1,
     }
     
-    model2 = CXRCrossEncoder(z_dict, swap_list, pred_dict,input_shape=(2,3,448, 448)).cuda()
+    latent_code_order = ['sex', 'age', 'cac', 'common']
+    model2 = CXRCrossEncoder(z_dict, swap_list, pred_dict, latent_code_order, input_shape=(2,6,448, 448)).cuda()
 
     batch_size = 4
-    image = torch.rand(batch_size, 3, 448, 448).cuda()
+    image = torch.rand(batch_size, 6, 448, 448).cuda()
 
 
     output_dict2 = model2(image) # w/ bottleneck-linear
