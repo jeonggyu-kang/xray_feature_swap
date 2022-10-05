@@ -17,19 +17,27 @@ _IMAGE_WIDTH = 448
 _IMAGE_HEIGHT = 448
 
 # model-related params
-model_dict = dict(   
-    model_name = "AgePredictor",
-    # model_name = "CXRAutoencoder2", 
-    z_common = 24,
-    z_age = 12,
-    z_sex = 6,           
+model_dict = dict(  
+    z_dict = dict(
+        common = 24,
+        age    = 12,
+        sex    = 6,
+        cac    = 18
+    ), 
+    pred_dict = dict(
+        age = 1,
+        sex = 2,
+        cac = 5,
+    ),
+    swap_list = ['common', 'sex'],
+    latent_code_order = ['common', 'age', 'sex', 'cac'],
     max_epoch = 200,
     learning_rate = 1e-4,
     # mile_stone = None,
     mile_stone = [160, 180],
     decay_rate = 0.1,
-    image_size = (_IMAGE_WIDTH, _IMAGE_HEIGHT),   # width, height
-    extra = ['baseline_448 224']    
+    input_shape = (1, 6, _IMAGE_WIDTH, _IMAGE_HEIGHT),   # width, height
+    extra = ['debug']    
 )
 
 train_pipeline = [

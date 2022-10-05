@@ -89,10 +89,23 @@ def train(ep, max_epoch, model, train_loader, loss_mse, loss_ce, optimizer, writ
         print_every = 1
 
     score_dict = {
-        'pred_age' : [],
-        'gt_age' : [],
+        'pred_age' : 0,
+        'gt_age' : 0,
+
+        'pred_cac' : [],
+        'gt_cac' : [],
+
         'pred_sex' : [],
         'gt_sex' : [],
+
+        'pred_age2' : 0,
+        'gt_age2' : 0,
+
+        'pred_cac2' : [],
+        'gt_cac2' : [],
+
+        'pred_sex2' : [],
+        'gt_sex2' : [],
     }
 
     step = 0
@@ -102,35 +115,93 @@ def train(ep, max_epoch, model, train_loader, loss_mse, loss_ce, optimizer, writ
     local_step = 0
 
 
+    tb_dict = {
+        'age' : 0,
+        'sex' : 0,
+        'cac' : 0,
+        'recon' : 0,
+        'age2' : 0,
+        'cac2' : 0,
+        
+    }
+
+
     for i, batch in enumerate(train_loader):
         image = batch['image'].cuda()
-        gt_age = batch['gt_age'].cuda()
-        gt_sex = batch['gt_sex'].cuda()
+
+
+        # sex
+        gt_age = batch['age'].cuda()
+        gt_age2 = batch['age2'].cuda()
+
+        # age
+        gt_sex = batch['sex'].cuda()
+        gt_sex2 = batch['sex2'].cuda()
+
+        # cac
+        gt_cac = batch['cac'].cuda()
+        gt_cac2 = batch['cac2'].cuda()
+
 
         output_dict = model(image)
 
-        score_dict['pred_sex'].append(output_dict['sex_hat'].cpu())
-        score_dict['gt_sex'].append(gt_sex.cpu()) 
 
-        loss_mse_value = loss_mse(output_dict['age_hat'], gt_age)
-        loss_ce_value  = loss_ce(output_dict['sex_hat'], gt_sex)
+        # recon loss
+        recon_loss = loss_mse(output_dict['x_hat'], image)
 
-        loss = loss_mse_value + 0.9 * loss_ce_value
+        # age loss
+        age_loss1 = loss_mse(output_dict['pred']['age'][0], gt_age)
+        age_loss2 = loss_mse(output_dict['pred']['age'][1], gt_age2)
+        age_loss = age_loss1 + age_loss2
 
-        
-        
-        # preds.append(output_dict['y_hat'])
-        # gt.append(y)
+        # sex loss
+        sex_loss = loss_ce(output_dict['pred']['sex'][0], gt_sex)
+                 + loss_ce(output_dict['pred']['sex'][1], gt_sex2)
+
+        # cac loss (TODO: empty csv value check)
+        if True:
+            cac_loss1 = loss_mse(output_dict['pred']['cac'][0], gt_cac)
+            cac_loss2 = loss_mse(output_dict['pred']['cac'][1], gt_cac2)
+            cac_loss = cac_loss1 + cac_loss2
+
+        else:
+            cac_loss = 0.0
+
+        total_loss = 0.3 * recon_loss + 0.5 * age_loss + 0.1 * sex_loss + cac_loss
+
+        # classification summary
+        score_dict['pred_sex'].append(output_dict['pred']['sex'][0].detach().cpu())
+        score_dict['pred_sex2'].append(output_dict['pred']['sex'][1].detach().cpu())
+        score_dict['gt_sex'].append(gt_sex.detach().cpu())
+        score_dict['gt_sex2'].append(gt_sex2.detach().cpu())
+
+        score_dict['pred_cac'].append(output_dict['pred']['cac'][0].detach().cpu())
+        score_dict['pred_cac2'].append(output_dict['pred']['cac'][1].detach().cpu())
+        score_dict['gt_cac'].append(gt_cac.detach().cpu())
+        score_dict['gt_cac2'].append(gt_cac2.detach().cpu())
+
+
+
+
+        # regression summary
+        score_dict['pred_age'] += age_loss1.item() 
+        score_dict['pred_age2'] += age_loss2.item() 
 
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        total_loss += loss.item()
-        mse_loss += loss_mse_value.item()
-        ce_loss += loss_ce_value.item()
-        epoch_error += loss_mse_value.item()
+        tb_dict['age'] += age_loss1.item()
+        tb_dict['age2'] += age_loss2.item()
+
+        tb_dict['sex'] += sex_loss.item()
+
+        tb_dict['cac'] += cac_loss1.item()
+        tb_dict['cac2'] += cac_loss2.item()
+
+        tb_dict['recon'] += recon_loss.item()
+
 
 
         step += 1
@@ -139,33 +210,64 @@ def train(ep, max_epoch, model, train_loader, loss_mse, loss_ce, optimizer, writ
 
 
         if (i+1) % print_every == 0:
-            total_loss /= step
-            mse_loss /= step
-            ce_loss /= step
+            summary_message = 'Epoch [{}/{}] Step[{}/{}] '.format(ep, max_epoch, step_cnt, _print_every)
 
-            writer.add_scalar('train/total_loss', total_loss, global_step)
-            writer.add_scalar('train/mse_loss', mse_loss, global_step)
-            writer.add_scalar('train/ce_loss', ce_loss, global_step)
+            for k, v in tb_dict.items():
+                title_name = 'train/loss-{}'.format(k)
+                wirter.add_scalar(title_name, v, global_step)
+                tb_dict[k] = 0.0
 
-            print('Epoch [{}/{}] Step[{}/{}] Total-Loss: {:.4f} MSE-Loss: {:.4f} CE-Loss: {:.4f}'.format(
-                ep, max_epoch, step_cnt, _print_every, total_loss, mse_loss, ce_loss))
-            
-            total_loss = 0.0
-            mse_loss = 0.0
-            ce_loss = 0.0
+                summary_message += '{}-loss'.format(k) + '{:.4f}'.format(v)
+
+            print(summary_message)        
+
             step = 0
             step_cnt += 1
 
+    # classification summary (accuracy)
 
-    print ('Train Summary[{},{}] : MSE-Error: {:.4f}'.format(ep, max_epoch, epoch_error/local_step))
-    writer.add_scalar('train/age-mse-error', epoch_error/local_step, ep)
+    cac_preds = torch.cat(score_dict['pred_cac'])
+    cac_preds2 = torch.cat(score_dict['pred_cac2'])
+    cac_gt    = torch.cat(score_dict['gt_cac'])
+    cac_gt2    = torch.cat(score_dict['gt_cac2'])
 
-    preds = torch.cat(score_dict['pred_sex'])
-    gt = torch.cat(score_dict['gt_sex'])
+    cac_acc = torch.mean((cac_preds.argmax(dim=1) == cac_gt).float()) 
+    cac_acc2 = torch.mean((cac_preds2.argmax(dim=1) == cac_gt2).float()) 
 
-    acc = torch.mean((preds.argmax(dim=1) == gt).float())
-    print ('Train Summary[{},{}] : Sex-Acc: {:.4f}'.format(ep, max_epoch, acc))
-    writer.add_scalar('train/sex-acc', acc, ep)
+    sex_preds = torch.cat(score_dict['pred_sex'])
+    sex_preds2 = torch.cat(score_dict['pred_sex2'])
+    sex_gt    = torch.cat(score_dict['gt_sex'])
+    sex_gt2    = torch.cat(score_dict['gt_sex2'])
+
+    sex_acc = torch.mean((sex_preds.argmax(dim=1) == sex_gt).float()) 
+    sex_acc2 = torch.mean((sex_preds2.argmax(dim=1) == sex_gt2).float())   
+
+
+
+    # regression summary (error)
+
+    age_error = score_dict['pred_age']
+    age_error2 = score_dict['pred_age2']
+
+    summary_message = 'Epoch [{}/{}] '.format(ep, max_epoch)
+    summary_message += 'cac-acc1: {}'.format(cac_acc)
+    summary_message += 'cac-acc2: {}'.format(cac_acc2)
+    summary_message += 'sex-acc1: {}'.format(sex_acc)
+    summary_message += 'sex-acc2: {}'.format(sex_acc2)
+    summary_message += 'age-error: {}'.format(age_error)
+    summary_message += 'age-error2: {}'.format(age_error2)
+
+    print (summary_message)
+
+    writer.add_scalar('train/cac-acc1', cac_acc, ep)
+    writer.add_scalar('train/cac-acc2', cac_acc2, ep)
+
+    writer.add_scalar('train/sex-acc1', sex_acc, ep)
+    writer.add_scalar('train/sex-acc2', sex_acc2, ep)
+
+    writer.add_scalar('train/age-error1', age_error, ep)
+    writer.add_scalar('train/age-error2', age_error2, ep)
+
 
 
 @torch.no_grad() # stop calculating gradient

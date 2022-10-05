@@ -19,19 +19,27 @@ def main():
     # TODO : apply easydict
     args = get_hyperparameters()                 #             
 
-    # model = get_model(model_name=args['model_name'])
-    # optimizer = torch.optim.Adam(model.parameters(), lr=args['learning_rate'])
-    # loss_ce = torch.nn.CrossEntropyLoss()
-    # loss_mse = torch.nn.MSELoss()       
+    model = get_model(
+        z_dict = args.get('z_dict'),
+        pred_dict = args.get('pred_dict'),
+        swap_list = args.get('swap_list'),
+        latent_code_order = args.get('latent_code_order'),
+        input_shape = args.get('input_shape')
+    )
 
-    '''
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=args['learning_rate'])
+    
+    loss_ce = torch.nn.CrossEntropyLoss()
+    loss_mse = torch.nn.MSELoss()       
+
+    
     if args.get('mile_stone') is not None:
         scheduler = torch.optim.lr_scheduler.MultiStepLR(
             optimizer, milestones = args['mile_stone'], gamma = 0.1)            
     else:
         scheduler = None
-    '''
-
+    
     
     mode = 'train'
 
@@ -61,12 +69,14 @@ def main():
         pickle_path = args['pickle_path']
     )
 
+    '''
     for i , sample in enumerate(train_loader):
         print(sample['image'].shape)
         break
 
     
     exit()
+    '''
 
     writer = get_logger(args['save_root'] )
 
