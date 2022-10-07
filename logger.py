@@ -51,16 +51,16 @@ class SaveManager:
     def add_image(self, text, image_grid, global_step):
         self.writer.add_image(text, image_grid, global_step)
 
-    def update(self, model, error):
+    def update_by_acc(self, model, acc):
         if self.best_acc is None:
             self.best_model = copy.deepcopy(model)
-            self.best_acc = error
+            self.best_acc = acc
             return
 
-        if self.best_acc > error:
-            print('best_model update: {}'.format(error))
+        if self.best_acc < acc:
+            print('best_model update: {}'.format(acc))
             self.best_model = copy.deepcopy(model)
-            self.best_acc = error
+            self.best_acc = acc
 
     def save(self, model, prefix):
         checkpoint = {}

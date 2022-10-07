@@ -62,8 +62,8 @@ class AGEDataset(Dataset):
 
         # TODO: modify
  
-        self.range_min = 1
-        self.range_max = 100
+        self.range_min = 20
+        self.range_max = 80
         self.range_max -= self.range_min
 
 

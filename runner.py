@@ -28,16 +28,18 @@ def trainer(
 
 
     for ep in range(1, max_epoch+1):
+        
         train(ep, max_epoch, model, train_loader, loss_mse, loss_ce, optimizer, writer, print_every)
         if scheduler is not None:
             scheduler.step()
+        
 
-        '''
+
         if ep % test_every == 0:
-            error = test(ep, max_epoch, model, test_loader, writer, loss_mse)
+            acc = test(ep, max_epoch, model, test_loader, writer)
             
-            writer.update(model, error)
-        '''
+            writer.update_by_acc(model, acc)
+
        
         
         if ep == 1 or ep % save_every == 0:
@@ -277,137 +279,157 @@ def train(ep, max_epoch, model, train_loader, loss_mse, loss_ce, optimizer, writ
 
 
 @torch.no_grad() # stop calculating gradient
-def test(ep, max_epoch, model, test_loader, writer, loss_mse=None, confusion_matrix=False, csv = False, hard_sample=False, age_hard_sample=False, age_diff_thres = None, age_ratio_thres = None):
+
+def test(
+    ep, 
+    max_epoch, 
+    model, 
+    test_loader, 
+    writer, 
+    confusion_matrix = False, 
+    csv = False, 
+    hard_sample = False,
+    age_hard_sample = False,
+    age_diff_thres = None,
+    age_ratio_thres = None 
+):
+
+
     model.eval()
-
-    epoch_loss = 0.0
-    local_step = 0
-
-    if ep is not None:
-
-        global_step = (ep - 1) * len(test_loader)
-
-    else:
-        global_step = 0
-        ep = 1
 
 
     score_dict = {
+        'pred_age' : 0,
+        'gt_age' : 0,
+
+        'pred_cac' : [],
+        'gt_cac' : [],
+
         'pred_sex' : [],
         'gt_sex' : [],
+
+        'pred_age2' : 0,
+        'gt_age2' : 0,
+
+        'pred_cac2' : [],
+        'gt_cac2' : [],
+
+        'pred_sex2' : [],
+        'gt_sex2' : [],
     }
 
-    hardsample_dict = get_sample_dict(2)
-    age_hardsample_list = []
+    step = 0
+    step_cnt = 1
+    local_step = 0
+
+
+    tb_dict = {
+        'age' : 0,
+        'sex' : 0,
+        'cac' : 0,
+        'recon' : 0,
+        'age2' : 0,
+        'cac2' : 0,
+        
+    }
 
 
     for i, batch in enumerate(test_loader):
         image = batch['image'].cuda()
-        gt_age = batch['gt_age'].cuda()
-        gt_sex = batch['gt_sex'].cuda()
+
+
+        # age
+        gt_actual_age = batch['actual_age']
+        gt_actual_age2 = batch['actual_age2']
+
+
+        # sex
+        gt_sex = batch['sex']
+        gt_sex2 = batch['sex2']
+
+        # cac
+        gt_cac = batch['cac']
+        gt_cac2 = batch['cac2']
+
 
         output_dict = model(image)
 
-        score_dict['pred_sex'].append(output_dict['sex_hat'].cpu())
-        score_dict['gt_sex'].append(gt_sex.cpu())
+        # classification (cac,sex)
+        score_dict['pred_cac'].append(output_dict['pred']['cac'][:, 0:5].detach().cpu())
+        score_dict['gt_cac'].append(gt_cac)
+        score_dict['pred_cac2'].append(output_dict['pred']['cac'][:, 5:10].detach().cpu())
+        score_dict['gt_cac2'].append(gt_cac2)
 
-        if loss_mse is not None:
-            loss_mse_value = loss_mse(output_dict['age_hat'], gt_age)
-            epoch_loss += loss_mse_value.item()
-            local_step +=1
-        else:
-            B, _, _, _ = image.shape
-            for bi in range(B):
-                age_gt  = batch['gt_age_int'][bi].item()
-                age_hat = int((output_dict['age_hat'][bi] * 99 + 1. + 0.5).item())
-                diff = abs(age_gt - age_hat)
-                # print('pred: {},  gt: {}'.format(age_hat, age_gt)) # age
-                ratio = diff / age_gt
-                if diff > age_diff_thres or ratio > age_ratio_thres:
-                    sample = batch['image'][bi].unsqueeze(0)
-                    
-                    signed_diff = age_gt - age_hat
-                    signed_diff_ratio = signed_diff / age_gt
-                    age_hardsample_list.append({
-                        'signed_diff' : signed_diff,
-                        'signed_diff_ratio' : signed_diff_ratio,
-                        'image' : batch['image'][bi]
-                        
-                    })
+        score_dict['pred_sex'].append(output_dict['pred']['sex'][:, 0:2].detach().cpu())
+        score_dict['gt_sex'].append(gt_sex)
+        score_dict['pred_sex2'].append(output_dict['pred']['sex'][:, 2:4].detach().cpu())
+        score_dict['gt_sex2'].append(gt_sex2)
 
 
-                epoch_loss += diff 
-                local_step +=1
+        # regression (age)
+        # TODO : implement
+        '''
+        gt_actual_age
+        (output_dict['pred']['age'][:, 0:1] * 60.0) + 20
 
-
-
-        if hard_sample:
-            hardsample_dict = update_hardsample_indice(
-                output_dict['sex_hat'].detach().cpu(), 
-                batch['gt_sex'], 
-                hardsample_dict, 
-                batch['image']
-            )
-
-
-
-        if csv:
-            B, _, _, _ = image.shape
-            for bi in range(B):
-                f_name = batch['f_name'][bi]
-                age_gt = int(batch['gt_age_int'][bi].item()) # gt 
-                age_hat = (output_dict['age_hat'][bi] * 99 + 1.).item()
-                writer.export_csv(f_name, age_gt, age_hat)
+        gt_actual_age2
+        (output_dict['pred']['age'][:, 1:2] * 60.0) + 20
         
 
-            
-
-    # mse loss value (return)
-    epoch_loss /= local_step
-    print ('Test Summary[{}/{}] : MSE-Loss: {:.4f}'.format(ep, max_epoch, epoch_loss))
-    writer.add_scalar('test/age-loss', epoch_loss, ep)
-
-    # acc
-    preds = torch.cat(score_dict['pred_sex'])
-    gt = torch.cat(score_dict['gt_sex'])
-
-    acc = torch.mean((preds.argmax(dim=1) == gt).float())
-    print ('Test Summary[{}/{}] : Sex-Acc: {:.4f}'.format(ep, max_epoch, acc))
-    writer.add_scalar('test/age-acc', acc, ep)
 
 
-    if age_hard_sample:
-        # write top & bottom N hard sample w.r.t signed age diff.
-        age_hardsample_list.sort(key = lambda x:x['signed_diff'])
-        write_age_hard_sample(age_hardsample_list, writer, 'diff')
+        step += 1
+        global_step += 1
+        local_step += 1
+        '''
 
-        # write top & bottom N hard sample w.r.t signed age diff ratio.
-        age_hardsample_list.sort(key = lambda x:x['signed_diff_ratio'])
-        write_age_hard_sample(age_hardsample_list, writer, 'ratio')        
 
-    if hard_sample:
-        index2cls_name = {
-            0: 'Female',
-            1: 'Male',
-        }
-        for gt_k in hardsample_dict:
-            for pred_k, samples in hardsample_dict[gt_k].items():
-                if samples:
-                    num_sample = len(samples)
-                    text = str(index2cls_name[gt_k]) + '/' + str(index2cls_name[pred_k])
-                    samples = torch.cat(samples)
-                    grid_samples = vutils.make_grid(tensor_rgb2bgr(samples), normalize=True, scale_each=True)
-                    writer.add_image(text, grid_samples, 0)
-                    print('{} : {}'.format(text, num_sample))
 
-    if confusion_matrix:
-        cm_image = get_confusion_matrix_image(preds.detach().cpu(), gt.cpu(), normalize=False)
-        writer.add_image('test/unnorm_cm', cm_image, ep)
+    # classification summary (accuracy)
+    cac_preds = torch.cat(score_dict['pred_cac'])
+    cac_preds2 = torch.cat(score_dict['pred_cac2'])
+    cac_gt    = torch.cat(score_dict['gt_cac'])
+    cac_gt2    = torch.cat(score_dict['gt_cac2'])
 
-        cm_image = get_confusion_matrix_image(preds.detach().cpu(), gt.cpu(), normalize=True)
-        writer.add_image('test/norm_cm', cm_image, ep)
+    cac_acc = torch.mean((cac_preds.argmax(dim=1) == cac_gt).float()) 
+    cac_acc2 = torch.mean((cac_preds2.argmax(dim=1) == cac_gt2).float()) 
 
-    return epoch_loss
+    sex_preds = torch.cat(score_dict['pred_sex'])
+    sex_preds2 = torch.cat(score_dict['pred_sex2'])
+    sex_gt    = torch.cat(score_dict['gt_sex'])
+    sex_gt2    = torch.cat(score_dict['gt_sex2'])
+
+    sex_acc = torch.mean((sex_preds.argmax(dim=1) == sex_gt).float()) 
+    sex_acc2 = torch.mean((sex_preds2.argmax(dim=1) == sex_gt2).float())   
+
+
+
+    # regression summary (error)
+    # TODO : implement
+    age_error = 0.0
+    age_error2 = 0.0
+
+
+    summary_message = 'Test Summary Epoch [{}/{}] '.format(ep, max_epoch)
+    summary_message += '\tcac-acc1: {:.4f}'.format(cac_acc)
+    summary_message += '\tcac-acc2: {:.4f}'.format(cac_acc2)
+    summary_message += '\tsex-acc1: {:.4f}'.format(sex_acc)
+    summary_message += '\tsex-acc2: {:.4f}'.format(sex_acc2)
+    summary_message += '\tage-error: {:.4f}'.format(age_error)
+    summary_message += '\tage-error2: {:.4f}'.format(age_error2)
+
+    print (summary_message)
+
+    writer.add_scalar('test/cac-acc1', cac_acc, ep)
+    writer.add_scalar('test/cac-acc2', cac_acc2, ep)
+
+    writer.add_scalar('test/sex-acc1', sex_acc, ep)
+    writer.add_scalar('test/sex-acc2', sex_acc2, ep)
+
+    writer.add_scalar('test/age-error1', age_error, ep)
+    writer.add_scalar('test/age-error2', age_error2, ep)
+
+    return (cac_acc + cac_acc2)/2
 
 
 def grad_cam(model, data_loader, writer, cam, export_csv, n_class, task_type):
