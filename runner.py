@@ -150,15 +150,15 @@ def train(ep, max_epoch, model, train_loader, loss_mse, loss_ce, optimizer, writ
         # recon loss
         recon_loss = loss_mse(output_dict['x_hat'], image)
 
-
+        
         # age loss
         age_loss1 = loss_mse(output_dict['pred']['age'][:, 0:1], gt_age)
         age_loss2 = loss_mse(output_dict['pred']['age'][:, 1:2], gt_age2)
         age_loss = age_loss1 + age_loss2
-
+        
         # sex loss
         sex_loss = loss_ce(output_dict['pred']['sex'][:, 0:2], gt_sex) + loss_ce(output_dict['pred']['sex'][:, 2:4], gt_sex2)
-
+        
         # cac loss (TODO: empty csv value check)
         if True:
             cac_loss1 = loss_ce(output_dict['pred']['cac'][:, 0:5], gt_cac)
@@ -167,9 +167,11 @@ def train(ep, max_epoch, model, train_loader, loss_mse, loss_ce, optimizer, writ
 
         else:
             cac_loss = 0.0
+        
 
         #! TODO : loss weight check
         total_loss = 0.3 * recon_loss + 0.5 * age_loss + 0.1 * sex_loss + cac_loss
+
 
         optimizer.zero_grad()
         total_loss.backward()
