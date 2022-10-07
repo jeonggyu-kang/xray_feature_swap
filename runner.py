@@ -32,11 +32,12 @@ def trainer(
         if scheduler is not None:
             scheduler.step()
 
-        
+        '''
         if ep % test_every == 0:
             error = test(ep, max_epoch, model, test_loader, writer, loss_mse)
             
             writer.update(model, error)
+        '''
        
         
         if ep == 1 or ep % save_every == 0:
@@ -149,34 +150,39 @@ def train(ep, max_epoch, model, train_loader, loss_mse, loss_ce, optimizer, writ
         # recon loss
         recon_loss = loss_mse(output_dict['x_hat'], image)
 
+
         # age loss
-        age_loss1 = loss_mse(output_dict['pred']['age'][0], gt_age)
-        age_loss2 = loss_mse(output_dict['pred']['age'][1], gt_age2)
+        age_loss1 = loss_mse(output_dict['pred']['age'][:, 0:1], gt_age)
+        age_loss2 = loss_mse(output_dict['pred']['age'][:, 1:2], gt_age2)
         age_loss = age_loss1 + age_loss2
 
         # sex loss
-        sex_loss = loss_ce(output_dict['pred']['sex'][0], gt_sex)
-                 + loss_ce(output_dict['pred']['sex'][1], gt_sex2)
+        sex_loss = loss_ce(output_dict['pred']['sex'][:, 0:2], gt_sex) + loss_ce(output_dict['pred']['sex'][:, 2:4], gt_sex2)
 
         # cac loss (TODO: empty csv value check)
         if True:
-            cac_loss1 = loss_mse(output_dict['pred']['cac'][0], gt_cac)
-            cac_loss2 = loss_mse(output_dict['pred']['cac'][1], gt_cac2)
+            cac_loss1 = loss_ce(output_dict['pred']['cac'][:, 0:5], gt_cac)
+            cac_loss2 = loss_ce(output_dict['pred']['cac'][:, 5:10], gt_cac2)
             cac_loss = cac_loss1 + cac_loss2
 
         else:
             cac_loss = 0.0
 
+        #! TODO : loss weight check
         total_loss = 0.3 * recon_loss + 0.5 * age_loss + 0.1 * sex_loss + cac_loss
 
+        optimizer.zero_grad()
+        total_loss.backward()
+        optimizer.step()
+
         # classification summary
-        score_dict['pred_sex'].append(output_dict['pred']['sex'][0].detach().cpu())
-        score_dict['pred_sex2'].append(output_dict['pred']['sex'][1].detach().cpu())
+        score_dict['pred_sex'].append(output_dict['pred']['sex'][:, 0:2].detach().cpu())
+        score_dict['pred_sex2'].append(output_dict['pred']['sex'][:, 2:4].detach().cpu())
         score_dict['gt_sex'].append(gt_sex.detach().cpu())
         score_dict['gt_sex2'].append(gt_sex2.detach().cpu())
 
-        score_dict['pred_cac'].append(output_dict['pred']['cac'][0].detach().cpu())
-        score_dict['pred_cac2'].append(output_dict['pred']['cac'][1].detach().cpu())
+        score_dict['pred_cac'].append(output_dict['pred']['cac'][:, 0:5].detach().cpu())
+        score_dict['pred_cac2'].append(output_dict['pred']['cac'][:, 5:10].detach().cpu())
         score_dict['gt_cac'].append(gt_cac.detach().cpu())
         score_dict['gt_cac2'].append(gt_cac2.detach().cpu())
 
@@ -188,9 +194,7 @@ def train(ep, max_epoch, model, train_loader, loss_mse, loss_ce, optimizer, writ
         score_dict['pred_age2'] += age_loss2.item() 
 
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+
 
         tb_dict['age'] += age_loss1.item()
         tb_dict['age2'] += age_loss2.item()
@@ -214,10 +218,10 @@ def train(ep, max_epoch, model, train_loader, loss_mse, loss_ce, optimizer, writ
 
             for k, v in tb_dict.items():
                 title_name = 'train/loss-{}'.format(k)
-                wirter.add_scalar(title_name, v, global_step)
+                writer.add_scalar(title_name, v, global_step)
                 tb_dict[k] = 0.0
 
-                summary_message += '{}-loss'.format(k) + '{:.4f}'.format(v)
+                summary_message += '\t{}-loss'.format(k) + '{:.4f}'.format(v)
 
             print(summary_message)        
 
@@ -250,12 +254,12 @@ def train(ep, max_epoch, model, train_loader, loss_mse, loss_ce, optimizer, writ
     age_error2 = score_dict['pred_age2']
 
     summary_message = 'Epoch [{}/{}] '.format(ep, max_epoch)
-    summary_message += 'cac-acc1: {}'.format(cac_acc)
-    summary_message += 'cac-acc2: {}'.format(cac_acc2)
-    summary_message += 'sex-acc1: {}'.format(sex_acc)
-    summary_message += 'sex-acc2: {}'.format(sex_acc2)
-    summary_message += 'age-error: {}'.format(age_error)
-    summary_message += 'age-error2: {}'.format(age_error2)
+    summary_message += '\tcac-acc1: {:.4f}'.format(cac_acc)
+    summary_message += '\tcac-acc2: {:.4f}'.format(cac_acc2)
+    summary_message += '\tsex-acc1: {:.4f}'.format(sex_acc)
+    summary_message += '\tsex-acc2: {:.4f}'.format(sex_acc2)
+    summary_message += '\tage-error: {:.4f}'.format(age_error)
+    summary_message += '\tage-error2: {:.4f}'.format(age_error2)
 
     print (summary_message)
 

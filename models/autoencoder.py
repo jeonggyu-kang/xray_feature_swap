@@ -62,7 +62,7 @@ class CXRCrossEncoder(nn.Module):
                 nn.Linear(z_dict[k], 256),
                 nn.ReLU(True),
                 nn.Dropout(0.5),
-                nn.Linear(256, v)
+                nn.Linear(256, 2*v)
             )     
             self.prediction_net[k].cuda()   
 
@@ -129,7 +129,7 @@ class CXRCrossEncoder(nn.Module):
         
         output_dict = {
             'latent_code_dict' : latent_code,    # after swap
-            'pred_dict' : pred,
+            'pred' : pred,
             'x_hat' : x_hat                      # reconstructed image
         }
 

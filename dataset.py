@@ -140,9 +140,11 @@ class VariableAgeDataset(AGEDataset):
             elif 'sex' == k[:3].lower():
                 ret[k]  = torch.LongTensor([int(v)]).squeeze()
 
-            else: 
-                # TODO : implement
-                ret[k] = v
+            elif 'cac' == k[:3].lower():
+                ret[k] =  torch.LongTensor([int(v)]).squeeze()
+
+            else:
+                raise NotImplementedError('{} is not supported!'.format(k))
 
         return ret        
 
