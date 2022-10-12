@@ -205,5 +205,19 @@ def calc_mean_error(pred, gt):
 
     return mean_error / pred.shape[0]
 
-    
 
+
+def mine_hard_sample(samples, pred, gt, image):
+    unnormed_pred = (pred * 60) + 20.0
+    for bi in range(image.shape[0]):
+
+        signed_diff = unnormed_pred[bi] - gt[bi]
+        signed_diff_ratio = signed_diff / gt[bi]
+
+        samples.append({
+            'signed_diff' : signed_diff,
+            'signed_diff_ratio' : signed_diff_ratio,
+            'image' : image[bi]
+        })
+
+    return samples

@@ -5,6 +5,7 @@ from evaluation import calc_accuracy, get_confusion_matrix_image, get_mean_squar
 from evaluation import get_sample_dict, update_hardsample_indice, draw_cam
 from evaluation import write_age_hard_sample
 from evaluation import calc_mean_error
+from evaluation import mine_hard_sample
 import torchvision.utils as vutils
 from utils import tensor_rgb2bgr
 
@@ -53,14 +54,11 @@ def tester(
     model,
     test_loader,
     writer,
-    visualizer,
     confusion_matrix,
     csv = False,
     hard_sample = False,
-    age_hard_sample = False,
-    age_ratio_thres = 10,
-    age_diff_thres = 0.2    
-):
+    meta = None
+): 
 
     pbar=tqdm(total=len(test_loader))
     print('Dataset length: {}'.format(len(test_loader)))
@@ -70,9 +68,7 @@ def tester(
         confusion_matrix = confusion_matrix,
         csv = csv,
         hard_sample = hard_sample,
-        age_hard_sample = age_hard_sample,
-        age_ratio_thres = age_ratio_thres,
-        age_diff_thres = age_diff_thres   
+        meta = meta
     )
     
     writer.close()
@@ -291,14 +287,14 @@ def test(
     csv = False, 
     hard_sample = False,
     age_hard_sample = False,
-    age_diff_thres = None,
-    age_ratio_thres = None 
+    meta = None,
 ):
 
 
     model.eval()
 
     age_hard_sample_list = []
+    age_hard_sample_list2 = []
 
 
     score_dict = {
@@ -379,7 +375,14 @@ def test(
         ) 
 
         # hardsample (age)
-        # TODO : implement
+        age_hard_sample_list = mine_hard_sample(
+            age_hard_sample_list, output_dict['pred']['age'][:, 0:1], gt_actual_age, batch['image']
+        )
+        age_hard_sample_list2 = mine_hard_sample(
+            age_hard_sample_list2, output_dict['pred']['age'][:, 1:2], gt_actual_age2, batch['image']
+        )
+
+
 
         step += 1
         local_step += 1
@@ -463,7 +466,20 @@ def test(
 
 
     # hardsample
+    if hard_sample:
+        # sorting (signed_diff)
+        age_hard_sample_list.sort(key=lambda x:x['signed_diff'])
+        write_age_hard_sample(age_hard_sample_list, writer, 'diff')
+         # sorting (signed_diff)       
+        age_hard_sample_list.sort(key=lambda x:x['signed_diff_ratio'])
+        write_age_hard_sample(age_hard_sample_list, writer, 'ratio')
 
+        # sorting (signed_diff)
+        age_hard_sample_list2.sort(key=lambda x:x['signed_diff'])
+        write_age_hard_sample(age_hard_sample_list2, writer, 'diff2')
+         # sorting (signed_diff)       
+        age_hard_sample_list2.sort(key=lambda x:x['signed_diff_ratio'])
+        write_age_hard_sample(age_hard_sample_list2, writer, 'ratio2')
 
 
 
