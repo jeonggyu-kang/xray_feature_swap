@@ -195,5 +195,15 @@ def write_age_hard_sample(samples, writer, text, num_hard_sample = 5):
 
         writer.add_image('test/age-hard-{}/botN'.format(text), grid_samples, 0)
 
+def calc_mean_error(pred, gt):
+    
+    mean_error = 0.0
+    unnormed_pred = (pred * 60) + 20.0
 
+    for p, g, in zip(unnormed_pred, gt):
+        mean_error += abs((p-g).float().item())
+
+    return mean_error / pred.shape[0]
+
+    
 

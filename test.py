@@ -25,13 +25,17 @@ def main():
     args = modulevar.get_hyperparameters(config=_args.config)
 
 
-    
-
     ckpt_path = os.path.join(_args.log_root, 'best.pt')
 
-    model = get_model(model_name=args['model_name'], ckpt_path=ckpt_path)
-
-            
+    model = get_model(
+        z_dict = args.get('z_dict'),
+        pred_dict = args.get('pred_dict'),
+        swap_list = args.get('swap_list'),
+        latent_code_order = args.get('latent_code_order'),
+        input_shape = args.get('input_shape'),   
+        ckpt_path=ckpt_path
+    )
+          
 
     mode = 'test'
     
@@ -43,27 +47,25 @@ def main():
         batch_size = args['batch_size'],
         num_workers = args['workers_per_gpu'],
         pipeline = args[mode]['pipeline'],
-        csv = True
+        csv = False,
+        pickle_path = args['pickle_path']
     )
 
     save_path = os.path.join(_args.log_root, 'eval')
     writer = get_logger(save_path)
-
-    # visualizer = Umap()
-    visualizer = None
 
 
     tester(
         model = model,
         test_loader = test_loader,
         writer = writer,
-        visualizer = visualizer,
         confusion_matrix = True,
-        csv = True,
+        csv = False,
         hard_sample = True,   # sex_hard_sample
-        age_hard_sample = True,
-        age_ratio_thres = 10,
-        age_diff_thres = 0.2
+        meta = dict(
+            age_ratio_thres = 10,
+            age_diff_thres = 0.2
+        )
 
     )
 

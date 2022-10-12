@@ -4,6 +4,7 @@ import torch
 from evaluation import calc_accuracy, get_confusion_matrix_image, get_mean_squared_error
 from evaluation import get_sample_dict, update_hardsample_indice, draw_cam
 from evaluation import write_age_hard_sample
+from evaluation import calc_mean_error
 import torchvision.utils as vutils
 from utils import tensor_rgb2bgr
 
@@ -297,10 +298,12 @@ def test(
 
     model.eval()
 
+    age_hard_sample_list = []
+
 
     score_dict = {
-        'pred_age' : 0,
-        'gt_age' : 0,
+        'actual_age' : 0,
+        'actual_age2' : 0,
 
         'pred_cac' : [],
         'gt_cac' : [],
@@ -366,22 +369,21 @@ def test(
         score_dict['gt_sex2'].append(gt_sex2)
 
 
-        # regression (age)
+        # regression (age)  
+        score_dict['actual_age'] += calc_mean_error(
+            output_dict['pred']['age'][:, 0:1], gt_actual_age
+        ) 
+
+        score_dict['actual_age2'] += calc_mean_error(
+            output_dict['pred']['age'][:, 1:2], gt_actual_age2
+        ) 
+
+        # hardsample (age)
         # TODO : implement
-        '''
-        gt_actual_age
-        (output_dict['pred']['age'][:, 0:1] * 60.0) + 20
-
-        gt_actual_age2
-        (output_dict['pred']['age'][:, 1:2] * 60.0) + 20
-        
-
-
 
         step += 1
-        global_step += 1
         local_step += 1
-        '''
+ 
 
 
 
@@ -405,10 +407,9 @@ def test(
 
 
     # regression summary (error)
-    # TODO : implement
-    age_error = 0.0
-    age_error2 = 0.0
-
+    
+    age_error = score_dict['actual_age'] / local_step
+    age_error2 = score_dict['actual_age2'] / local_step
 
     summary_message = 'Test Summary Epoch [{}/{}] '.format(ep, max_epoch)
     summary_message += '\tcac-acc1: {:.4f}'.format(cac_acc)
@@ -428,6 +429,50 @@ def test(
 
     writer.add_scalar('test/age-error1', age_error, ep)
     writer.add_scalar('test/age-error2', age_error2, ep)
+
+    # confusion matrix
+
+    if confusion_matrix:
+        if ep is None:
+            ep = 0
+        
+        # CAC
+        cm_image = get_confusion_matrix_image(
+            cac_preds.detach().cpu(), cac_gt.cpu(), normalize = False
+        )
+
+        cm_image2 = get_confusion_matrix_image(
+            cac_preds2.detach().cpu(), cac_gt2.cpu(), normalize = False
+        )
+        writer.add_image('test/cac-CM1', cm_image, ep)
+        writer.add_image('test/cac-CM2', cm_image2, ep)
+
+
+        # SEX
+        cm_image = get_confusion_matrix_image(
+            sex_preds.detach().cpu(), sex_gt.cpu(), normalize = False
+        )
+
+        cm_image2 = get_confusion_matrix_image(
+            sex_preds2.detach().cpu(), sex_gt2.cpu(), normalize = False
+        )
+        writer.add_image('test/sex-CM1', cm_image, ep)
+        writer.add_image('test/sex-CM2', cm_image2, ep)
+
+
+
+
+    # hardsample
+
+
+
+
+
+
+
+
+
+
 
     return (cac_acc + cac_acc2)/2
 
@@ -457,4 +502,4 @@ def grad_cam(model, data_loader, writer, cam, export_csv, n_class, task_type):
 
         pbar.update()
 
-    writer.close()
+    writer.close()       
