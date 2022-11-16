@@ -66,6 +66,17 @@ class SaveManager:
         checkpoint = {}
         checkpoint['weight'] = model.state_dict()
 
+        # encoder fc
+        for k, v in model.encoder_fc.items():
+            k = 'encoder_' + k 
+            checkpoint[k] = v.state_dict()
+
+        # prediction networks
+        for k, v in model.prediction_net.items():
+            k = 'prediction_' + k 
+            checkpoint[k] = v.state_dict()
+
+
         save_path = os.path.join(self.save_root, str(prefix)+'.pt')
         torch.save(checkpoint, save_path)
 

@@ -31,10 +31,10 @@ model_dict = dict(
     ),
     swap_list = ['common', 'sex'],
     latent_code_order = ['common', 'age', 'sex', 'cac'],
-    max_epoch = 200,
+    max_epoch = 20,
     learning_rate = 1e-4,
     # mile_stone = None,
-    mile_stone = [160, 180],
+    mile_stone = [16, 18],
     decay_rate = 0.1,
     input_shape = (1, 6, _IMAGE_WIDTH, _IMAGE_HEIGHT),   # width, height
     extra = ['debug']    

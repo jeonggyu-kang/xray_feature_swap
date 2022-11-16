@@ -17,6 +17,16 @@ def get_model(z_dict, pred_dict, swap_list, latent_code_order, input_shape, ckpt
         ckpt = torch.load(ckpt_path, map_location='cpu')
         model.load_state_dict(ckpt['weight'])
 
+        # encoder fc
+        for k, v in model.encoder_fc.items():
+            k2 = 'encoder_' + k 
+            model.encoder_fc[k].load_state_dict( ckpt[k2])
+
+        # prediction networks
+        for k, v in model.prediction_net.items():
+            k2 = 'prediction_' + k 
+            model.prediction_net[k].load_state_dict( ckpt[k2])
+
     model.cuda()
 
     return model

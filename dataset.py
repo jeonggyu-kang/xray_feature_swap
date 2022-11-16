@@ -135,7 +135,7 @@ class VariableAgeDataset(AGEDataset):
                 _v = float(v)
                 v =(_v - self.range_min) / self.range_max
                 ret[k] = torch.FloatTensor([v])  # 0 ~ 1.0
-                ret['actual_'+k] = int(_v)
+                ret['actual_'+k] = float(_v)
 
             elif 'sex' == k[:3].lower():
                 ret[k]  = torch.LongTensor([int(v)]).squeeze()
