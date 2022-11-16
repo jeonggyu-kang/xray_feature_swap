@@ -144,3 +144,5 @@ dmypy.json
 *.DS_Store
 work_dir/
 data/
+*.pkl
+*.tar
